@@ -95,7 +95,21 @@ def serve_epub(book_id):
     filepath = os.path.join(BOOKS_DIR, f"{book_id}.epub")
     if not os.path.exists(filepath):
         return "File not found", 404
-    return send_file(filepath, mimetype='application/epub+zip')
+
+    file_size = os.path.getsize(filepath)
+
+    def generate():
+        with open(filepath, 'rb') as f:
+            while True:
+                chunk = f.read(8192)  # 每次只读 8KB
+                if not chunk:
+                    break
+                yield chunk
+
+    response = Response(generate(), mimetype='application/epub+zip')
+    response.headers['Content-Length'] = file_size
+    response.headers['Accept-Ranges'] = 'bytes'
+    return response
 
 @app.route('/api/state', methods=['GET'])
 def get_state():
