@@ -122,7 +122,11 @@ def update_notes(book_id):
 
 @app.route('/api/explain', methods=['POST'])
 def explain_text():
-    data = request.get_json()
+    # 安全获取 JSON 数据
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'explanation': '请求数据格式错误，请刷新页面后重试'}), 400
+
     text = data.get('text', '').strip()
     if not text:
         return jsonify({'explanation': ''})
@@ -151,8 +155,8 @@ def explain_text():
             {"role": "user", "content": f"请解读以下文本：\n\n{text}"}
         ],
         "temperature": 0.5,
-        "max_tokens": 10000,
-        "enable_search": True
+        "max_tokens": 10000
+        # 注意：enable_search 已移除，因为部分模型可能不支持
     }
 
     try:
@@ -170,8 +174,10 @@ def explain_text():
                 explanation += "\n\n⚠️ 内容过长，已截断。"
             return jsonify({'explanation': explanation.strip()})
         else:
-            print(f"API Error: {resp.text}")
-            return jsonify({'explanation': f'AI接口异常({resp.status_code})，请稍后重试'})
+            # 输出详细的错误信息，方便排查
+            error_msg = f"AI接口返回错误 {resp.status_code}：{resp.text}"
+            print(error_msg)
+            return jsonify({'explanation': error_msg})
     except requests.exceptions.Timeout:
         print("请求超时")
         return jsonify({'explanation': '请求超时，请检查网络或稍后重试'})
