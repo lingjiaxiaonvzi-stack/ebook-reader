@@ -124,7 +124,7 @@ def update_notes(book_id):
 def explain_text():
     # 安全获取 JSON 数据
     data = request.get_json(silent=True)
-    if not data:
+    if not isinstance(data, dict):
         return jsonify({'explanation': '请求数据格式错误，请刷新页面后重试'}), 400
 
     text = data.get('text', '').strip()
@@ -156,7 +156,6 @@ def explain_text():
         ],
         "temperature": 0.5,
         "max_tokens": 10000
-        # 注意：enable_search 已移除，因为部分模型可能不支持
     }
 
     try:
@@ -166,18 +165,29 @@ def explain_text():
             json=payload,
             timeout=60
         )
-        if resp.status_code == 200:
-            result = resp.json()
-            explanation = result['choices'][0]['message']['content']
-            finish_reason = result['choices'][0].get('finish_reason', '')
-            if finish_reason == 'length':
-                explanation += "\n\n⚠️ 内容过长，已截断。"
-            return jsonify({'explanation': explanation.strip()})
-        else:
-            # 输出详细的错误信息，方便排查
-            error_msg = f"AI接口返回错误 {resp.status_code}：{resp.text}"
-            print(error_msg)
-            return jsonify({'explanation': error_msg})
+        if resp.status_code != 200:
+            error_detail = f"HTTP {resp.status_code}: {resp.text}"
+            print(error_detail)
+            return jsonify({'explanation': f'AI接口返回错误（{resp.status_code}），请稍后重试'})
+
+        result = resp.json()
+        if not isinstance(result, dict):
+            return jsonify({'explanation': 'AI返回了无法识别的数据'})
+
+        choices = result.get('choices')
+        if not choices or len(choices) == 0:
+            return jsonify({'explanation': 'AI没有返回任何回答，请尝试换一段文字'})
+
+        message = choices[0].get('message', {})
+        explanation = message.get('content', '')
+        if not explanation:
+            return jsonify({'explanation': 'AI未返回有效回答'})
+
+        finish_reason = choices[0].get('finish_reason', '')
+        if finish_reason == 'length':
+            explanation += "\n\n⚠️ 内容过长，已截断。"
+        return jsonify({'explanation': explanation.strip()})
+
     except requests.exceptions.Timeout:
         print("请求超时")
         return jsonify({'explanation': '请求超时，请检查网络或稍后重试'})
@@ -185,8 +195,8 @@ def explain_text():
         print("连接错误")
         return jsonify({'explanation': '无法连接到AI服务，请检查网络'})
     except Exception as e:
-        print(f"Request Error: {str(e)}")
-        return jsonify({'explanation': f'请求失败({str(e)})'})
+        print(f"Request Exception: {str(e)}")
+        return jsonify({'explanation': f'请求失败：{str(e)}'})
 
 @app.route('/api/export/<book_id>', methods=['GET'])
 def export_notes(book_id):
